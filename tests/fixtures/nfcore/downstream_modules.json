@@ -1,0 +1,22 @@
+{
+  "modules": {
+    "nf-core": {
+      "deseq2/differential": {
+        "git_sha": "fixture-deseq2",
+        "repository": "https://github.com/nf-core/modules.git"
+      },
+      "fastqc": {
+        "git_sha": "fixture-fastqc",
+        "repository": "https://github.com/nf-core/modules.git"
+      },
+      "macs2/callpeak": {
+        "git_sha": "fixture-macs2",
+        "repository": "https://github.com/nf-core/modules.git"
+      },
+      "multiqc": {
+        "git_sha": "fixture-multiqc",
+        "repository": "https://github.com/nf-core/modules.git"
+      }
+    }
+  }
+}

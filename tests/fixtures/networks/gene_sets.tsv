@@ -1,0 +1,10 @@
+set	gene
+T_regulon	TF_T
+T_regulon	T_TARGET1
+T_regulon	T_TARGET2
+B_regulon	TF_B
+B_regulon	B_TARGET1
+B_regulon	B_TARGET2
+M_regulon	TF_M
+M_regulon	M_TARGET1
+M_regulon	M_TARGET2

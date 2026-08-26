@@ -1,0 +1,13 @@
+name: fastqc
+description: Run FastQC on reads.
+keywords:
+  - quality control
+tools:
+  - fastqc:
+      homepage: https://www.bioinformatics.babraham.ac.uk/projects/fastqc/
+input:
+  - reads:
+      type: file
+output:
+  - html:
+      type: file

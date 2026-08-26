@@ -1,0 +1,7 @@
+source	target	mor	likelihood
+TF_T	T_TARGET1	1	1.0
+TF_T	T_TARGET2	1	0.9
+TF_B	B_TARGET1	1	1.0
+TF_B	B_TARGET2	1	0.9
+TF_M	M_TARGET1	1	1.0
+TF_M	M_TARGET2	1	0.9

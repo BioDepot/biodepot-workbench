@@ -1,0 +1,4 @@
+## pairs format v1.0
+#columns: readID chr1 pos1 chr2 pos2 strand1 strand2
+pair_1	chr1	18	chr2	42	+	-
+pair_2	chr2	24	chr1	76	-	+

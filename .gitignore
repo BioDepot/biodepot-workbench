@@ -1,0 +1,49 @@
+# Python packaging output
+build/
+dist/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+*.env
+*.pem
+*.p12
+*.sqlite
+*.sqlite3
+
+# Secrets / local config
+AGENTS.local.md
+config/models.yaml
+config/models.local.yaml
+config/*.local.yaml
+*.key
+
+# Generated outputs
+artifacts/
+runs/
+outputs/
+.cache/
+.nextflow*
+*.html
+*.png
+*.svg
+*.json.gz
+
+# Large biological data
+*.h5mu
+*.h5ad
+*.bam
+*.cram
+*.fastq
+*.fastq.gz
+*.fq.gz
+*.mtx
+!tests/fixtures/singlecell_mex/matrix.mtx
+*.mtx.gz
+
+# OS / editor
+.DS_Store
+.pytest_cache/
+.specstory/
+.vscode/

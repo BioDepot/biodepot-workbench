@@ -1,0 +1,21 @@
+{
+  "git_sha": "abc123def456",
+  "git_url": "https://github.com/nf-core/demo",
+  "pipeline": "nf-core/demo",
+  "release": "1.2.3",
+  "repos": {
+    "https://github.com/nf-core/modules.git": {
+      "modules": {
+        "nf-core": {
+          "fastqc": {
+            "git_sha": "111aaa"
+          },
+          "multiqc": {
+            "git_sha": "222bbb"
+          }
+        }
+      }
+    }
+  },
+  "schema": "nf-core/modules.json/v2"
+}

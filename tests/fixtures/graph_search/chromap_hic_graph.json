@@ -1,0 +1,21 @@
+{
+  "schema": "morphic.workflow_graph/v0",
+  "graph_id": "chromap_hic_pairs_v0",
+  "title": "Chromap Hi-C pairs",
+  "suite": "chromap",
+  "recipe_family": "chromap",
+  "assay_profile": "chromap_hic",
+  "modalities": ["hic"],
+  "nodes": [{"id": "chromap_hic", "kind": "module", "module_id": "chromap_hic_pairs", "label": "Chromap Hi-C pairs"}],
+  "edges": [],
+  "inputs": [
+    {"name": "reference", "artifact_type": "fasta", "required": true},
+    {"name": "index", "artifact_type": "chromap_index", "required": true},
+    {"name": "reads", "artifact_type": "fastq", "required": true}
+  ],
+  "outputs": [{"name": "pairs", "artifact_type": "pairs"}],
+  "capabilities": ["chromap", "hic", "pairs"],
+  "confidence_tier": "source_derived",
+  "lifecycle_state": "candidate",
+  "materialization_status": "suite_recipe_declared"
+}

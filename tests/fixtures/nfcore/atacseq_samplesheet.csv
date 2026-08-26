@@ -1,0 +1,2 @@
+sample,fastq_1,fastq_2,replicate
+tiny_atac,tests/fixtures/chromap/reads_R1.fastq,tests/fixtures/chromap/reads_R2.fastq,1

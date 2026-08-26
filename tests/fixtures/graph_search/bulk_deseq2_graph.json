@@ -1,0 +1,26 @@
+{
+  "schema": "morphic.workflow_graph/v0",
+  "graph_id": "bulk_pe_deseq2_v0",
+  "title": "Bulk paired-end RNA-seq with DESeq2",
+  "suite": "star",
+  "recipe_family": "bulk_rna_seq",
+  "assay_profile": "bulk_rna_seq_deg",
+  "modalities": ["rna", "bulk_rna_seq"],
+  "nodes": [
+    {"id": "align", "kind": "module", "module_id": "star_bulk_pe_counts", "label": "STAR bulk PE counts"},
+    {"id": "de", "kind": "module", "module_id": "deseq2_differential_expression", "label": "DESeq2 differential expression"}
+  ],
+  "edges": [{"source": "align", "target": "de", "edge_type": "produces_consumed_by", "artifact_type": "gene_count_matrix"}],
+  "inputs": [
+    {"name": "reads", "artifact_type": "paired_fastq", "required": true},
+    {"name": "coldata", "artifact_type": "sample_metadata_table", "required": true}
+  ],
+  "outputs": [
+    {"name": "counts", "artifact_type": "gene_count_matrix"},
+    {"name": "deseq2_results", "artifact_type": "differential_expression_table"}
+  ],
+  "capabilities": ["bulk_rna_seq", "differential_expression", "deg"],
+  "confidence_tier": "curated_profile",
+  "lifecycle_state": "candidate",
+  "materialization_status": "runnable_bundle"
+}

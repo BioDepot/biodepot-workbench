@@ -1,0 +1,13 @@
+gene	cell_t_1	cell_t_2	cell_b_1	cell_b_2	cell_mono_1	cell_mono_2
+TF_T	12	11	2	2	3	3
+TF_B	2	2	13	12	3	2
+TF_M	3	2	2	3	13	12
+T_TARGET1	11	10	2	2	3	2
+T_TARGET2	10	11	3	2	2	3
+B_TARGET1	2	3	12	11	3	2
+B_TARGET2	3	2	11	12	2	3
+M_TARGET1	2	3	3	2	12	11
+M_TARGET2	3	2	2	3	11	12
+LIG_T	10	9	2	2	3	3
+REC_B	2	2	11	10	3	2
+HOUSE	8	8	8	8	8	8

@@ -1,0 +1,20 @@
+{
+  "schema": "morphic.workflow_graph/v0",
+  "graph_id": "trimodal_qc_report_v0",
+  "title": "Trimodal MuData QC report",
+  "suite": "multiomics",
+  "recipe_family": "trimodal_mudata",
+  "assay_profile": "generic_trimodal_h5mu",
+  "modalities": ["rna", "atac", "crispr_guide"],
+  "nodes": [{"id": "qc", "kind": "module", "module_id": "trimodal_qc_report", "label": "Trimodal MuData QC report"}],
+  "edges": [],
+  "inputs": [{"name": "mudata", "artifact_type": "h5mu", "required": true}],
+  "outputs": [
+    {"name": "qc_report_html", "artifact_type": "html"},
+    {"name": "qc_report_json", "artifact_type": "json"}
+  ],
+  "capabilities": ["qc", "mudata", "trimodal"],
+  "confidence_tier": "tested_local_recipe",
+  "lifecycle_state": "candidate",
+  "materialization_status": "runnable_bundle"
+}

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "biodepot-workbench"
+version = "0.1.0"
+description = "BioDepot Agentic Workbench platform (API, MCP, execution, registry)."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "fastmcp",
+    "uvicorn",
+    "starlette",
+    "pydantic",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "psycopg[binary]>=3.1",
+]
+
+[project.optional-dependencies]
+backend = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "h5py",
+    "anndata",
+    "mudata",
+    "scanpy",
+    "plotly",
+    "kaleido",
+]
+test = [
+    "pytest",
+    "httpx",
+    "playwright>=1.49",
+]
+
+[project.urls]
+Repository = "https://github.com/BioDepot/biodepot-workbench"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["morphic_front*", "morphic_agent*"]
+
+[tool.setuptools.package-data]
+morphic_agent = ["schemas/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

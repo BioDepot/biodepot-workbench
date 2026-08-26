@@ -1,0 +1,113 @@
+{
+  "$id": "https://raw.githubusercontent.com/nf-core/atacseq/2.0/nextflow_schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "allOf": [
+    {
+      "$ref": "#/definitions/input_output_options"
+    },
+    {
+      "$ref": "#/definitions/reference_genome_options"
+    },
+    {
+      "$ref": "#/definitions/advanced_options"
+    }
+  ],
+  "definitions": {
+    "advanced_options": {
+      "description": "Execution profile and resource options.",
+      "properties": {
+        "max_cpus": {
+          "default": 8,
+          "minimum": 1,
+          "title": "Max CPUs",
+          "type": "integer"
+        },
+        "profile": {
+          "default": "docker",
+          "enum": [
+            "docker",
+            "singularity",
+            "conda"
+          ],
+          "title": "Profile",
+          "type": "string"
+        }
+      },
+      "title": "Advanced options",
+      "type": "object"
+    },
+    "input_output_options": {
+      "description": "ATAC-seq samplesheet and output directory.",
+      "properties": {
+        "fragment_size": {
+          "default": 200,
+          "minimum": 1,
+          "title": "Fragment size",
+          "type": "integer"
+        },
+        "input": {
+          "default": "tests/fixtures/nfcore/atacseq_samplesheet.csv",
+          "description": "CSV samplesheet with sample,fastq_1,fastq_2,replicate columns.",
+          "exists": true,
+          "format": "file-path",
+          "pattern": "^\\S+\\.csv$",
+          "schema": "assets/schema_input.json",
+          "title": "Input samplesheet",
+          "type": "string"
+        },
+        "outdir": {
+          "default": "results/nfcore-atacseq-chromap-fixture",
+          "description": "Directory for nf-core ATAC-seq outputs.",
+          "format": "directory-path",
+          "title": "Output directory",
+          "type": "string"
+        }
+      },
+      "required": [
+        "input",
+        "outdir"
+      ],
+      "title": "Input/output options",
+      "type": "object"
+    },
+    "reference_genome_options": {
+      "description": "Reference inputs shared with the Chromap fixture set.",
+      "properties": {
+        "fasta": {
+          "default": "tests/fixtures/chromap/reference.fa",
+          "description": "Genome FASTA used for the fixture handoff.",
+          "exists": true,
+          "format": "file-path",
+          "title": "Genome FASTA",
+          "type": "string"
+        },
+        "macs_gsize": {
+          "default": "hs",
+          "description": "Effective genome size preset for MACS2/MACS3-style peak calling.",
+          "title": "MACS genome size",
+          "type": "string"
+        }
+      },
+      "title": "Reference genome options",
+      "type": "object"
+    }
+  },
+  "description": "ATAC-seq peak-calling and QC wrapper seeded from the Chromap fixture family.",
+  "manifest": {
+    "homePage": "https://github.com/nf-core/atacseq",
+    "name": "nf-core/atacseq",
+    "version": "2.0"
+  },
+  "morphic_downstream_examples": [
+    {
+      "source_graph_id": "chromap_atac_bam_fragments",
+      "source_outputs": [
+        "fastq",
+        "fasta"
+      ],
+      "walkthrough_id": "18_nfcore_atacseq_chromap_handoff"
+    }
+  ],
+  "title": "nf-core/atacseq pipeline parameters",
+  "type": "object"
+}

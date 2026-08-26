@@ -1,0 +1,5 @@
+cell	cluster
+query_t	cluster_t
+query_b	cluster_b
+query_mono	cluster_mono
+query_ambiguous	cluster_ambiguous

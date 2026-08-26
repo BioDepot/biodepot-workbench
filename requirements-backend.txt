@@ -1,0 +1,19 @@
+# Backend deps for the all-in-one cloud container: run the Multiomics Launchpad
+# AND the pure-Python report recipes in the same environment. No compiled
+# engines (STAR/Chromap/libMACS3/CUDA) are required for the report/QC recipes.
+#
+# Mirrors the pure-Python subset of multiomics-suite/requirements.txt.
+fastmcp
+uvicorn
+starlette
+pydantic
+pyyaml
+numpy
+pandas
+scipy
+h5py
+anndata
+mudata
+scanpy
+plotly
+kaleido

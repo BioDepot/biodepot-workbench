@@ -1,0 +1,162 @@
+{
+  "$id": "https://raw.githubusercontent.com/nf-core/differentialabundance/2.0.0/nextflow_schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "allOf": [
+    {
+      "$ref": "#/definitions/input_output_options"
+    },
+    {
+      "$ref": "#/definitions/annotation_options"
+    },
+    {
+      "$ref": "#/definitions/analysis_options"
+    },
+    {
+      "$ref": "#/definitions/advanced_options"
+    }
+  ],
+  "definitions": {
+    "advanced_options": {
+      "description": "Execution profile and resource options.",
+      "properties": {
+        "max_cpus": {
+          "default": 8,
+          "minimum": 1,
+          "title": "Max CPUs",
+          "type": "integer"
+        },
+        "profile": {
+          "default": "docker",
+          "enum": [
+            "docker",
+            "singularity",
+            "conda"
+          ],
+          "title": "Profile",
+          "type": "string"
+        }
+      },
+      "title": "Advanced options",
+      "type": "object"
+    },
+    "analysis_options": {
+      "description": "Differential testing controls.",
+      "properties": {
+        "features_id_col": {
+          "default": "gene_id",
+          "description": "Column in the matrix identifying each feature.",
+          "title": "Feature ID column",
+          "type": "string"
+        },
+        "method": {
+          "default": "deseq2",
+          "enum": [
+            "deseq2",
+            "limma"
+          ],
+          "title": "Analysis method",
+          "type": "string"
+        },
+        "observations_id_col": {
+          "default": "sample",
+          "description": "Column in the samplesheet identifying observations.",
+          "title": "Observation ID column",
+          "type": "string"
+        },
+        "pvalue_threshold": {
+          "default": 0.05,
+          "minimum": 0,
+          "title": "Adjusted p-value threshold",
+          "type": "number"
+        }
+      },
+      "title": "Analysis options",
+      "type": "object"
+    },
+    "annotation_options": {
+      "description": "Optional feature annotation inputs.",
+      "properties": {
+        "gtf": {
+          "description": "Optional gene annotation GTF used for feature metadata.",
+          "exists": true,
+          "format": "file-path",
+          "title": "Gene annotation GTF",
+          "type": "string"
+        }
+      },
+      "title": "Annotation options",
+      "type": "object"
+    },
+    "input_output_options": {
+      "description": "Feature matrix, observation metadata, contrasts, and output location.",
+      "properties": {
+        "contrasts": {
+          "default": "tests/fixtures/nfcore/bulk_differentialabundance_contrasts.tsv",
+          "description": "TSV file defining the comparisons to perform.",
+          "exists": true,
+          "format": "file-path",
+          "title": "Contrasts table",
+          "type": "string"
+        },
+        "input": {
+          "default": "tests/fixtures/nfcore/bulk_differentialabundance_samplesheet.tsv",
+          "description": "Samplesheet describing observations and conditions for the matrix.",
+          "exists": true,
+          "format": "file-path",
+          "schema": "assets/schema_input.json",
+          "title": "Input samplesheet",
+          "type": "string"
+        },
+        "matrix": {
+          "default": "tests/fixtures/deseq2_smoke/counts_matrix.tsv",
+          "description": "Feature-by-observation matrix produced by an upstream Workbench recipe.",
+          "exists": true,
+          "format": "file-path",
+          "title": "Count matrix",
+          "type": "string"
+        },
+        "outdir": {
+          "default": "results/nfcore-differentialabundance-bulk",
+          "description": "Directory for nf-core differential abundance outputs.",
+          "format": "directory-path",
+          "title": "Output directory",
+          "type": "string"
+        }
+      },
+      "required": [
+        "input",
+        "contrasts",
+        "matrix",
+        "outdir"
+      ],
+      "title": "Input/output options",
+      "type": "object"
+    }
+  },
+  "description": "Differential abundance analysis for feature/observation matrices downstream of Workbench recipes.",
+  "manifest": {
+    "homePage": "https://github.com/nf-core/differentialabundance",
+    "name": "nf-core/differentialabundance",
+    "version": "2.0.0"
+  },
+  "morphic_downstream_examples": [
+    {
+      "source_graph_id": "bulk_pe_deseq2_v0",
+      "source_outputs": [
+        "counts_matrix",
+        "coldata"
+      ],
+      "walkthrough_id": "16_nfcore_da_bulk_counts"
+    },
+    {
+      "source_graph_id": "composed_0c804cb7c5ed_v0",
+      "source_outputs": [
+        "atac_evidence_table",
+        "peak_count_matrix"
+      ],
+      "walkthrough_id": "17_nfcore_da_chromap_peak_counts"
+    }
+  ],
+  "title": "nf-core/differentialabundance pipeline parameters",
+  "type": "object"
+}

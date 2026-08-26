@@ -1,0 +1,10 @@
+name: prepare
+description: Prepare sample reads.
+keywords:
+  - fastq
+input:
+  - reads:
+      type: file
+output:
+  - reads:
+      type: file

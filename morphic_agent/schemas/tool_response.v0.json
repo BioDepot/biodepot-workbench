@@ -1,0 +1,17 @@
+{
+  "schema": "morphic.tool_response/v0",
+  "description": "Structured BioDepot tool response envelope used by morphic_agent tools.",
+  "required": ["schema_version", "tool", "stable_id", "status", "payload", "summary"],
+  "properties": {
+    "schema_version": {"const": "morphic.tool_response/v0"},
+    "tool": {"type": "string"},
+    "stable_id": {"type": "string"},
+    "status": {"type": "string"},
+    "payload": {"type": "object"},
+    "summary": {"type": "string"},
+    "evidence": {"type": "array", "items": {"type": "object"}},
+    "confidence_tier": {"type": "string"},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "required_human_decisions": {"type": "array", "items": {"type": "string"}}
+  }
+}

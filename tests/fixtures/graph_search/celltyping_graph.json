@@ -1,0 +1,20 @@
+{
+  "schema": "morphic.workflow_graph/v0",
+  "graph_id": "single_cell_celltyping_v0",
+  "title": "Single-cell cell typing",
+  "suite": "singlecell",
+  "recipe_family": "single_cell_annotation",
+  "assay_profile": "scrna_celltyping",
+  "modalities": ["rna", "scrna"],
+  "nodes": [{"id": "celltyping", "kind": "module", "module_id": "celltyping", "label": "Cell typing"}],
+  "edges": [],
+  "inputs": [
+    {"name": "query_counts", "artifact_type": "expression_matrix", "required": true},
+    {"name": "marker_sets", "artifact_type": "marker_gene_table", "required": true}
+  ],
+  "outputs": [{"name": "cell_types", "artifact_type": "cell_type_table"}],
+  "capabilities": ["cell_typing", "annotation", "single_cell"],
+  "confidence_tier": "source_derived",
+  "lifecycle_state": "candidate",
+  "materialization_status": "graph_draft_only"
+}

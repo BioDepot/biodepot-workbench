@@ -1,0 +1,11 @@
+# Front-end client deps (lean — the heavy report deps live in the backend).
+requests>=2.31
+pyyaml>=6.0
+rich>=13.0
+
+# Optional: only needed if you also run the backend / report recipes in the same
+# environment (e.g. the all-in-one cloud container). Uncomment or use
+# requirements-backend.txt.
+#
+#   anndata, mudata, scanpy, plotly, kaleido, h5py, numpy, pandas, scipy,
+#   fastmcp, uvicorn, starlette, pydantic

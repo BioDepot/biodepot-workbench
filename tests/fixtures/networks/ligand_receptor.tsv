@@ -1,0 +1,2 @@
+ligand	receptor	source_cluster	target_cluster	resource_id
+LIG_T	REC_B	T_like	B_like	toy_ligand_receptor_network
