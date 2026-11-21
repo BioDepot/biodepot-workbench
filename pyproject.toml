@@ -13,7 +13,7 @@ dependencies = [
     "requests>=2.31",
     "pyyaml>=6.0",
     "rich>=13.0",
-    "fastmcp",
+    "fastmcp>=2.14,<4",
     "uvicorn",
     "starlette",
     "pydantic",

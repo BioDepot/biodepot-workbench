@@ -25,12 +25,18 @@ def _validate_module(module: dict[str, Any], index: int) -> list[str]:
     if not isinstance(module.get("runtime"), dict):
         errors.append(f"{module_id}: runtime must be an object")
     for field in ("inputs", "outputs"):
+        seen_names: set[str] = set()
         for item_index, item in enumerate(module.get(field) or []):
             if not isinstance(item, dict):
                 errors.append(f"{module_id}: {field}[{item_index}] must be an object")
                 continue
             if not item.get("name") or not item.get("artifact_type"):
                 errors.append(f"{module_id}: {field}[{item_index}] needs name and artifact_type")
+                continue
+            name = str(item["name"])
+            if name in seen_names:
+                errors.append(f"{module_id}: duplicate {field[:-1]} name `{name}`")
+            seen_names.add(name)
     return errors
 
 
@@ -81,6 +87,12 @@ class ModuleCatalog:
               "schema": "morphic.module_catalog/v0",
               "modules": [],
               "errors": [{"path": str(self.catalog_path), "message": str(exc)}],
+          }
+      if not isinstance(payload, dict):
+          return {
+              "schema": "morphic.module_catalog/v0",
+              "modules": [],
+              "errors": [{"path": str(self.catalog_path), "message": "catalog must be a JSON object"}],
           }
       modules = payload.get("modules") if isinstance(payload.get("modules"), list) else []
       errors: list[str] = []

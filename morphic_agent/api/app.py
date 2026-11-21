@@ -11,7 +11,6 @@ import mimetypes
 import re
 import selectors
 import subprocess
-import tempfile
 import time
 import uuid
 import zipfile
@@ -19,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
@@ -48,7 +48,11 @@ from morphic_agent.execution import (
 )
 from morphic_agent.execution.scheduler import run_scheduler_bundle, run_scheduler_remote_ssh_bundle
 from morphic_agent.execution.ssh import run_remote_ssh_bundle
-from morphic_agent.execution.nextflow import nextflow_artifact_candidate_paths
+from morphic_agent.execution.nextflow import (
+    nextflow_artifact_candidate_paths,
+    run_in_new_session,
+    terminate_process_group,
+)
 from morphic_agent.registry.catalog import ModuleCatalog
 from morphic_agent.suites.star import (
     build_helper_bundle_zip,
@@ -80,10 +84,42 @@ def _recipe_graph_from_payload(graph: dict[str, Any]) -> RecipeGraph:
     )
 
 
+class _BadRequest(Exception):
+    """Client input error that maps to an HTTP 400 JSON response."""
+
+
+async def _json_body(request: Request) -> Any:
+    """Return the JSON body, or {} when the content type is not JSON."""
+
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        return {}
+    try:
+        return await request.json()
+    except ValueError as exc:  # includes JSONDecodeError and bad UTF-8
+        raise _BadRequest("request body is not valid JSON") from exc
+
+
+def _timeout_text(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value if isinstance(value, str) else ""
+
+
+def _int_field(body: Any, key: str, default: int) -> int:
+    try:
+        return int((body.get(key) if isinstance(body, dict) else None) or default)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise _BadRequest(f"{key} must be an integer") from exc
+
+
+async def _bad_request_handler(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse({"error": "invalid request", "message": str(exc)}, status_code=400)
+
+
 def _resolve_path_lenient(path: Path) -> Path:
     try:
         return path.resolve()
-    except OSError:
+    except (OSError, RuntimeError):
         return path.absolute()
 
 
@@ -664,7 +700,12 @@ def create_app(
     catalog_path: str | Path | None = None,
 ) -> Starlette:
     service = WorkbenchService.create(
-        db_path=db_path or os.environ.get("MORPHIC_AGENT_DB") or tempfile.mktemp(prefix="morphic-agent-", suffix=".sqlite3"),
+        db_path=(
+            db_path
+            or os.environ.get("MORPHIC_AGENT_DB_PATH")
+            or os.environ.get("MORPHIC_AGENT_DB")
+            or None  # let the database config read MORPHIC_AGENT_DATABASE_URL, then fall back to a temp file
+        ),
         catalog_path=catalog_path,
     )
     store = service.store
@@ -707,10 +748,13 @@ def create_app(
             return JSONResponse({"status": "blocked", "error": "no file browser roots are configured"}, status_code=503)
         raw_path = str(request.query_params.get("path") or "").strip()
         if raw_path:
-            candidate = Path(raw_path).expanduser()
-            if not candidate.is_absolute():
-                candidate = (Path.cwd() / candidate).resolve()
-            target = _resolve_path_lenient(candidate)
+            try:
+                candidate = Path(raw_path).expanduser()
+                if not candidate.is_absolute():
+                    candidate = (Path.cwd() / candidate).resolve()
+                target = _resolve_path_lenient(candidate)
+            except (ValueError, OSError, RuntimeError):
+                return JSONResponse({"status": "invalid", "error": "path is not valid"}, status_code=400)
             allowed_root = _allowed_file_browser_root(target, roots)
             if allowed_root is None:
                 return JSONResponse(
@@ -724,7 +768,11 @@ def create_app(
                 )
             if _path_has_hidden_component(target, allowed_root):
                 return JSONResponse({"status": "blocked", "error": "hidden paths are not browsable", "path": str(target), "roots": roots}, status_code=403)
-            if not target.exists():
+            try:
+                target_exists = target.exists()
+            except (ValueError, OSError):
+                return JSONResponse({"status": "invalid", "error": "path is not valid"}, status_code=400)
+            if not target_exists:
                 return JSONResponse({"status": "not_found", "error": "path does not exist", "path": str(target), "roots": roots}, status_code=404)
             browse_dir = target if target.is_dir() else target.parent
             parent = browse_dir.parent
@@ -767,7 +815,7 @@ def create_app(
         return JSONResponse(payload, status_code=status)
 
     async def agent_chat(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         payload, status = service.assistant_message(body, request_context=_request_context(request, body))
@@ -800,7 +848,7 @@ def create_app(
             except ValueError as exc:
                 return JSONResponse({"status": "error", "error": str(exc)}, status_code=400)
             return JSONResponse(payload)
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         context = _request_context(request, body)
@@ -828,7 +876,7 @@ def create_app(
                 run_limit=run_limit,
             )
             return JSONResponse(payload, status_code=status)
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         context = _request_context(request, body)
@@ -842,7 +890,7 @@ def create_app(
         return JSONResponse(payload, status_code=status)
 
     async def conversation_fork(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         context = _request_context(request, body)
@@ -865,7 +913,7 @@ def create_app(
         return JSONResponse(payload, status_code=status)
 
     async def nfcore_harvest(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         try:
@@ -891,7 +939,7 @@ def create_app(
         return JSONResponse(payload, status_code=status_code)
 
     async def nfcore_decompose(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         pipeline_path = str(body.get("pipeline_path") or "").strip()
@@ -907,7 +955,7 @@ def create_app(
         return JSONResponse(payload)
 
     async def nfcore_register(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         schema_path = str(body.get("schema_path") or "").strip()
@@ -972,7 +1020,7 @@ def create_app(
         return JSONResponse(payload)
 
     async def nfcore_reference_validation(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         graph_id = str(body.get("graph_id") or "").strip()
@@ -993,7 +1041,7 @@ def create_app(
         return JSONResponse(payload, status_code=status)
 
     async def graph_draft(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         goal = str(body.get("goal") or "").strip()
@@ -1020,7 +1068,7 @@ def create_app(
         return JSONResponse(payload, status_code=status)
 
     async def graph_projection_rebuild(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         projection_version = str(body.get("projection_version") or "morphic-agent-v0")
@@ -1031,13 +1079,13 @@ def create_app(
         return JSONResponse(service.projection_status(projection_version))
 
     async def graph_verified_search(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         return JSONResponse(service.find_verified_subgraphs(body))
 
     async def graph_search(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         filters = body.get("filters") if isinstance(body.get("filters"), dict) else {}
@@ -1054,7 +1102,7 @@ def create_app(
         )
 
     async def graph_store_verified(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         graph_id = str(request.path_params.get("graph_id") or "")
@@ -1068,7 +1116,7 @@ def create_app(
         return JSONResponse(payload, status_code=status)
 
     async def graph_params_validate(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         graph_id = str(request.path_params.get("graph_id") or "")
@@ -1076,7 +1124,7 @@ def create_app(
         return JSONResponse(service.validate_params(graph_id, params))
 
     async def graph_render(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         graph_id = str(request.path_params.get("graph_id") or "")
@@ -1108,7 +1156,7 @@ def create_app(
         )
 
     async def graph_preflight(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         graph_id = str(request.path_params.get("graph_id") or "")
@@ -1124,11 +1172,12 @@ def create_app(
                 execution_location=execution_location.as_dict(),
                 bundle_path=body.get("bundle_path"),
                 run_id=str(body.get("run_id") or "").strip() or None,
+                request_context=_request_context(request, body),
             )
         )
 
     async def graph_execution_review(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         graph_id = str(request.path_params.get("graph_id") or "").strip()
@@ -1232,7 +1281,7 @@ def create_app(
         return bundle, bundle_record, None, 200
 
     async def graph_execution_diagnostic(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         graph_id = str(request.path_params.get("graph_id") or "").strip()
@@ -1291,7 +1340,7 @@ def create_app(
                 service.list_runs(graph_id=graph_id, limit=limit, owner_user=context["storage_user"])
             )
 
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         graph_id = str(body.get("graph_id") or "").strip()
@@ -1324,7 +1373,7 @@ def create_app(
         return JSONResponse(payload, status_code=status)
 
     async def run_attach_validation(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         payload, status = service.attach_validation_to_run(
@@ -1335,7 +1384,7 @@ def create_app(
         return JSONResponse(payload, status_code=status)
 
     async def star_mvp_plan(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         goal = str(body.get("goal") or "post MEX h5ad QC and plots").strip()
@@ -1353,7 +1402,7 @@ def create_app(
         )
 
     async def star_mvp_materialize(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         graph_id = str(body.get("graph_id") or "").strip()
@@ -1473,7 +1522,7 @@ def create_app(
         return graph, result
 
     async def star_mvp_preflight(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         graph_id = str(body.get("graph_id") or "").strip()
@@ -1500,9 +1549,10 @@ def create_app(
                 },
                 status_code=403,
             )
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
+        timeout = _int_field(body, "timeout", 120)
         graph_id = str(body.get("graph_id") or "").strip()
         context = _request_context(request, body)
         try:
@@ -1543,9 +1593,8 @@ def create_app(
                     },
                     status_code=403,
                 )
-        timeout = int(body.get("timeout") or 120)
         try:
-            result = run_materialized_bundle(bundle, timeout=timeout)
+            result = await run_in_threadpool(run_materialized_bundle, bundle, timeout=timeout)
             result["execution_location"] = execution_location.as_dict()
             result["execution_dispatch"] = execution_dispatch_for_location(execution_location)
             graph_payload = json.loads((bundle / "workflow_graph.json").read_text(encoding="utf-8"))
@@ -1898,43 +1947,51 @@ def create_app(
         return payload
 
     async def graph_execute_production(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
+        timeout = _int_field(body, "timeout", 120)
         graph_id = str(request.path_params.get("graph_id") or "").strip()
         prepared, error_response = prepare_graph_production_execution(request, body, graph_id)
         if error_response is not None:
             return error_response
         assert prepared is not None
 
-        timeout = int(body.get("timeout") or 120)
         bundle = Path(prepared["bundle"])
         run_sh = Path(prepared["run_sh"])
         before_artifacts = _snapshot_artifact_files(bundle, prepared["params"])
+        stdout = ""
+        stderr = ""
+        finalize_started = False
+
+        async def finalize_once(**kwargs: Any) -> dict[str, Any]:
+            nonlocal finalize_started
+            finalize_started = True
+            return await run_in_threadpool(finalize_graph_production_execution, prepared, **kwargs)
+
         try:
             location_kind = getattr(prepared["execution_location"], "kind", "")
             if location_kind == "remote_ssh":
-                remote_result = run_remote_ssh_bundle(bundle=bundle, location=prepared["execution_location"], timeout=timeout)
+                remote_result = await run_in_threadpool(run_remote_ssh_bundle, bundle=bundle, location=prepared["execution_location"], timeout=timeout)
                 proc_returncode = remote_result.get("returncode")
                 stdout = str(remote_result.get("stdout") or "")
                 stderr = str(remote_result.get("stderr") or "")
             elif location_kind == "scheduler_remote_ssh":
-                scheduler_result = run_scheduler_remote_ssh_bundle(bundle=bundle, location=prepared["execution_location"], timeout=timeout)
+                scheduler_result = await run_in_threadpool(run_scheduler_remote_ssh_bundle, bundle=bundle, location=prepared["execution_location"], timeout=timeout)
                 proc_returncode = scheduler_result.get("returncode")
                 stdout = str(scheduler_result.get("stdout") or "")
                 stderr = str(scheduler_result.get("stderr") or "")
             elif location_kind == "scheduler_temporal":
-                scheduler_result = run_scheduler_bundle(bundle=bundle, location=prepared["execution_location"], timeout=timeout)
+                scheduler_result = await run_in_threadpool(run_scheduler_bundle, bundle=bundle, location=prepared["execution_location"], timeout=timeout)
                 proc_returncode = scheduler_result.get("returncode")
                 stdout = str(scheduler_result.get("stdout") or "")
                 stderr = str(scheduler_result.get("stderr") or "")
             else:
-                proc = subprocess.run(["bash", str(run_sh)], cwd=str(bundle), capture_output=True, text=True, timeout=timeout)
+                proc = await run_in_threadpool(run_in_new_session, ["bash", str(run_sh)], cwd=str(bundle), timeout=timeout)
                 proc_returncode = proc.returncode
                 stdout = proc.stdout or ""
                 stderr = proc.stderr or ""
-            payload = finalize_graph_production_execution(
-                prepared,
+            payload = await finalize_once(
                 returncode=proc_returncode,
                 stdout=stdout,
                 stderr=stderr,
@@ -1942,29 +1999,51 @@ def create_app(
                 timeout_seconds=timeout,
             )
         except subprocess.TimeoutExpired as exc:
-            payload = finalize_graph_production_execution(
-                prepared,
+            payload = await finalize_once(
                 returncode=None,
-                stdout=(exc.stdout or "") if isinstance(exc.stdout, str) else "",
-                stderr=(exc.stderr or "") if isinstance(exc.stderr, str) else "",
+                stdout=_timeout_text(exc.stdout),
+                stderr=_timeout_text(exc.stderr),
                 before_artifacts=before_artifacts,
                 timeout_seconds=timeout,
                 timed_out=True,
             )
         except Exception as exc:
-            return JSONResponse({"status": "failed", "message": str(exc), "bundle_path": str(bundle)}, status_code=500)
+            if finalize_started:
+                # The run was already (at least partly) recorded; do not overwrite it.
+                return JSONResponse(
+                    {
+                        "status": "failed",
+                        "message": f"recording the run result failed: {exc}",
+                        "bundle_path": str(bundle),
+                        "stdout_tail": stdout[-2000:],
+                        "stderr_tail": stderr[-2000:],
+                    },
+                    status_code=500,
+                )
+            try:
+                payload = await finalize_once(
+                    returncode=-1,
+                    stdout=stdout,
+                    stderr=(stderr + f"\n{exc}").strip(),
+                    before_artifacts=before_artifacts,
+                    timeout_seconds=timeout,
+                )
+                payload["message"] = str(exc)
+            except Exception:
+                return JSONResponse({"status": "failed", "message": str(exc), "bundle_path": str(bundle)}, status_code=500)
+            return JSONResponse(payload, status_code=500)
         return JSONResponse(payload)
 
     async def graph_execute_production_stream(request: Request) -> Response:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
+        timeout = _int_field(body, "timeout", 120)
         graph_id = str(request.path_params.get("graph_id") or "").strip()
         prepared, error_response = prepare_graph_production_execution(request, body, graph_id)
         if error_response is not None:
             return error_response
         assert prepared is not None
-        timeout = int(body.get("timeout") or 120)
         bundle = Path(prepared["bundle"])
         run_sh = Path(prepared["run_sh"])
         before_artifacts = _snapshot_artifact_files(bundle, prepared["params"])
@@ -2044,6 +2123,7 @@ def create_app(
                     stderr=subprocess.PIPE,
                     text=True,
                     bufsize=1,
+                    start_new_session=True,
                 )
                 selector = selectors.DefaultSelector()
                 if proc.stdout is not None:
@@ -2053,8 +2133,9 @@ def create_app(
                 deadline = time.monotonic() + timeout
                 while selector.get_map():
                     if time.monotonic() > deadline:
-                        timed_out = True
-                        proc.kill()
+                        if not timed_out:
+                            timed_out = True
+                            terminate_process_group(proc)
                     events = selector.select(timeout=0.2)
                     if not events and proc.poll() is not None:
                         for key in list(selector.get_map().values()):
@@ -2088,15 +2169,35 @@ def create_app(
                     timed_out=timed_out,
                 )
                 yield ndjson({"event": "result", "payload": payload})
+            except subprocess.TimeoutExpired as exc:
+                if proc is not None and proc.poll() is None:
+                    terminate_process_group(proc)
+                payload = finalize_graph_production_execution(
+                    prepared,
+                    returncode=None,
+                    stdout="".join(stdout_parts) or _timeout_text(exc.stdout),
+                    stderr="".join(stderr_parts) or _timeout_text(exc.stderr),
+                    before_artifacts=before_artifacts,
+                    timeout_seconds=timeout,
+                    timed_out=True,
+                )
+                yield ndjson({"event": "result", "payload": payload})
             except Exception as exc:
                 if proc is not None and proc.poll() is None:
-                    proc.kill()
-                yield ndjson(
-                    {
-                        "event": "result",
-                        "payload": {"status": "failed", "message": str(exc), "bundle_path": str(bundle)},
-                    }
-                )
+                    terminate_process_group(proc)
+                try:
+                    payload = finalize_graph_production_execution(
+                        prepared,
+                        returncode=-1,
+                        stdout="".join(stdout_parts),
+                        stderr="".join(stderr_parts) + f"\n{exc}",
+                        before_artifacts=before_artifacts,
+                        timeout_seconds=timeout,
+                    )
+                    payload["message"] = str(exc)
+                except Exception:
+                    payload = {"status": "failed", "message": str(exc), "bundle_path": str(bundle)}
+                yield ndjson({"event": "result", "payload": payload})
 
         return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
@@ -2144,7 +2245,7 @@ def create_app(
         return JSONResponse(payload, status_code=404 if payload.get("error") else 200)
 
     async def star_helper_bundle(request: Request) -> Response:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         workflow_id = str(body.get("workflow_id") or "star_bulk_pe_batch")
@@ -2162,7 +2263,7 @@ def create_app(
         )
 
     async def star_render(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         workflow_id = str(body.get("workflow_id") or "star_bulk_pe_batch")
@@ -2172,7 +2273,7 @@ def create_app(
         return JSONResponse(result, status_code=400 if not (result.get("validation") or {}).get("valid", False) and result.get("render") is None else 200)
 
     async def compose_modules(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         goal = str(body.get("goal") or body.get("message") or "").strip()
@@ -2228,7 +2329,7 @@ def create_app(
         )
 
     async def compose_recipe_draft(request: Request) -> JSONResponse:
-        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body = await _json_body(request)
         if not isinstance(body, dict):
             body = {}
         graph_id = str(body.get("graph_id") or body.get("composition_graph_id") or "").strip()
@@ -2327,14 +2428,22 @@ def create_app(
         Route("/api/compose", compose_modules, methods=["POST"]),
         Route("/api/compose/draft", compose_recipe_draft, methods=["POST"]),
     ]
-    app = Starlette(routes=routes)
+    app = Starlette(routes=routes, exception_handlers={_BadRequest: _bad_request_handler})
     app.state.workbench_service = service
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["*"],
-    )
+    # Same-origin by default: the built-in UI needs no CORS, and allowing any
+    # origin would let other web pages drive an unauthenticated local service.
+    cors_origins = [
+        origin.strip()
+        for origin in os.environ.get("MORPHIC_CORS_ALLOW_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["*"],
+        )
     return app
 
 

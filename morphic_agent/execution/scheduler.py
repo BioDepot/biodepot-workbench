@@ -18,6 +18,7 @@ from urllib.request import Request, urlopen
 
 from morphic_agent.bundle.containers import load_container_manifest
 from morphic_agent.content.paths import scheduler_startup_script
+from morphic_agent.execution.ssh import validate_ssh_name
 
 DEFAULT_SCHEDULER_API_URL = "http://127.0.0.1:8000"
 DEFAULT_SCHEDULER_STORAGE_DIR = "/tmp/temporal-scheduler-local"
@@ -340,6 +341,13 @@ def scheduler_remote_ssh_preflight(
         checks.append({"check": f"{field} provided", "status": "pass" if str(value or "").strip() else "fail", field: value})
     if missing:
         blockers.append(f"Scheduler SSH execution requires {', '.join(missing)}.")
+    invalid_ssh = False
+    for field in ("remote_host", "remote_user"):
+        try:
+            validate_ssh_name(getattr(target, field), field)
+        except ValueError as exc:
+            invalid_ssh = True
+            blockers.append(str(exc))
     runtime_ok = target.remote_container_runtime == "docker"
     checks.append(
         {
@@ -378,7 +386,7 @@ def scheduler_remote_ssh_preflight(
         checks.append({"check": "bundle_path provided for scheduler SSH execution", "status": "fail"})
         blockers.append("bundle_path is required for scheduler SSH preflight")
 
-    if target.remote_check and target.remote_host and target.remote_user and target.remote_workdir and ssh_path:
+    if target.remote_check and not invalid_ssh and target.remote_host and target.remote_user and target.remote_workdir and ssh_path:
         remote_check = _run_scheduler_remote_ssh_check(target, image=image)
         checks.extend(remote_check["checks"])
         blockers.extend(remote_check["blockers"])
@@ -487,6 +495,8 @@ def run_scheduler_remote_ssh_bundle(
         raise RuntimeError("bundle is missing a container image declaration")
     if not target.remote_host or not target.remote_user or not target.remote_workdir:
         raise RuntimeError("scheduler SSH execution requires remote_host, remote_user, and remote_workdir")
+    validate_ssh_name(target.remote_host, "remote_host")
+    validate_ssh_name(target.remote_user, "remote_user")
 
     run_id = _scheduler_run_id(bundle)
     packet_dir = target.storage_dir / run_id / "ssh_packet"
@@ -853,7 +863,9 @@ def _ssh_args(target: SchedulerLocalTarget) -> list[str]:
     ]
     if target.remote_port and target.remote_port != 22:
         args.extend(["-p", str(target.remote_port)])
-    args.append(f"{target.remote_user}@{target.remote_host}")
+    validate_ssh_name(target.remote_host, "remote_host")
+    validate_ssh_name(target.remote_user, "remote_user")
+    args.extend(["--", f"{target.remote_user}@{target.remote_host}"])
     return args
 
 

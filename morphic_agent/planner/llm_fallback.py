@@ -6,11 +6,21 @@ import os
 from dataclasses import replace
 from typing import Any
 
-from morphic_front.config import load_config
+from morphic_front.config import ModelsConfigMissing, load_config
 from morphic_front.llm import ChatClient, ProviderConfig
 
 _TRUTHY = {"1", "true", "yes", "on"}
 _FALSEY = {"0", "false", "no", "off"}
+_NO_PROVIDER_MESSAGE = (
+    "No LLM provider is configured. Set MODEL_BASE_URL/MODEL_API_KEY "
+    "or MORPHIC_AGENT_MODEL_BASE_URL/MORPHIC_AGENT_MODEL_API_KEY, "
+    "or allow config/models.yaml by unsetting MORPHIC_AGENT_DISABLE_CONFIG_LLM."
+)
+
+
+def _profile_unconfigured(provider: ProviderConfig, tunneled: bool) -> bool:
+    """A profile whose base_url expanded to empty (and has no tunnel) cannot be called."""
+    return not tunneled and not str(provider.base_url or "").strip()
 
 
 def _env_provider_config() -> ProviderConfig | None:
@@ -65,11 +75,15 @@ def complete_with_llm_fallback(goal: str, context: dict[str, Any]) -> dict[str, 
     if _config_llm_enabled():
         try:
             app_config = load_config(os.environ.get("MORPHIC_AGENT_LLM_PROFILE") or None)
+            if _profile_unconfigured(app_config.provider, bool(app_config.provider_tunnel)):
+                return {"ok": False, "error": _NO_PROVIDER_MESSAGE}
             if app_config.provider_tunnel:
                 with app_config.provider_tunnel.build() as tunnel:
                     provider = replace(app_config.provider, base_url=f"{tunnel.local_url}/v1")
                     return _complete_with_config(goal, context, provider)
             return _complete_with_config(goal, context, app_config.provider)
+        except ModelsConfigMissing:
+            return {"ok": False, "error": _NO_PROVIDER_MESSAGE}
         except Exception as exc:
             return {"ok": False, "error": str(exc), "provider": "config"}
 
@@ -97,6 +111,8 @@ def llm_provider_status() -> dict[str, Any]:
     if _config_llm_enabled():
         try:
             app_config = load_config(os.environ.get("MORPHIC_AGENT_LLM_PROFILE") or None)
+        except ModelsConfigMissing:
+            return {"configured": False, "available": False, "error": _NO_PROVIDER_MESSAGE}
         except Exception as exc:
             return {
                 "configured": False,
@@ -105,6 +121,8 @@ def llm_provider_status() -> dict[str, Any]:
                 "error": str(exc),
                 "source": "config",
             }
+        if _profile_unconfigured(app_config.provider, bool(app_config.provider_tunnel)):
+            return {"configured": False, "available": False, "error": _NO_PROVIDER_MESSAGE}
         return {
             "configured": True,
             "provider": app_config.provider.name,

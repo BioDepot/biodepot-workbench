@@ -68,6 +68,9 @@ Open <http://127.0.0.1:8890/>. By default, state uses a temporary SQLite
 database. Set `MORPHIC_AGENT_DATABASE_URL` or `MORPHIC_AGENT_DB` to use an
 explicit database.
 
+The API is same-origin by default. To serve a front end from another origin, set
+`MORPHIC_CORS_ALLOW_ORIGINS` to a comma-separated list of allowed origins.
+
 The application does not ship an authentication-provider or host deployment
 configuration. See [the security model](docs/SECURITY_MODEL.md) before placing
 the service behind a reverse proxy or enabling execution.
@@ -102,6 +105,10 @@ python3 scripts/scrub_public_release.py
 python3 -m pytest -q
 python3 scripts/count_mcp_tools.py
 ```
+
+Tests read module content from a sibling `recipes-tutorials` checkout when one
+exists; otherwise they use the synthetic catalog in `tests/fixtures/module_catalog.json`. Set
+`MORPHIC_RECIPES_TUTORIALS_ROOT` to choose a different content root.
 
 The release-candidate measurements and commands are recorded in
 [release validation](docs/RELEASE_VALIDATION.md). Browser tests require the

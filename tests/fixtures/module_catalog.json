@@ -1,0 +1,343 @@
+{
+  "schema": "morphic.module_catalog/v0",
+  "modules": [
+    {
+      "module_id": "star_bulk_pe_counts",
+      "title": "Synthetic bulk paired-end counts",
+      "capabilities": [
+        "bulk_rna_seq",
+        "counts"
+      ],
+      "inputs": [
+        {
+          "name": "reads",
+          "artifact_type": "paired_fastq",
+          "required": true
+        },
+        {
+          "name": "genome_fasta",
+          "artifact_type": "fasta",
+          "required": true
+        },
+        {
+          "name": "gtf",
+          "artifact_type": "gtf",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "counts",
+          "artifact_type": "gene_count_matrix"
+        }
+      ],
+      "parameters": [],
+      "runtime": {
+        "kind": "synthetic",
+        "workflow_id": "star_bulk_pe_batch"
+      },
+      "preflight": [
+        "STAR suite render succeeds"
+      ],
+      "confidence_tier": "curated_profile",
+      "evidence": [
+        {
+          "kind": "synthetic_fixture",
+          "path": "tests/fixtures"
+        }
+      ]
+    },
+    {
+      "module_id": "deseq2_differential_expression",
+      "title": "Synthetic differential expression",
+      "capabilities": [
+        "differential_expression"
+      ],
+      "inputs": [
+        {
+          "name": "counts",
+          "artifact_type": "gene_count_matrix",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "results",
+          "artifact_type": "de_results"
+        }
+      ],
+      "parameters": [],
+      "runtime": {
+        "kind": "synthetic"
+      },
+      "preflight": [],
+      "confidence_tier": "curated_profile",
+      "evidence": [
+        {
+          "kind": "synthetic_fixture",
+          "path": "tests/fixtures"
+        }
+      ]
+    },
+    {
+      "module_id": "volcano_plot",
+      "title": "Synthetic volcano plot",
+      "capabilities": [
+        "visualization"
+      ],
+      "inputs": [
+        {
+          "name": "results",
+          "artifact_type": "de_results",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "plot",
+          "artifact_type": "png"
+        }
+      ],
+      "parameters": [],
+      "runtime": {
+        "kind": "synthetic"
+      },
+      "preflight": [],
+      "confidence_tier": "curated_profile",
+      "evidence": [
+        {
+          "kind": "synthetic_fixture",
+          "path": "tests/fixtures"
+        }
+      ]
+    },
+    {
+      "module_id": "heatmap_plot",
+      "title": "Synthetic heatmap plot",
+      "capabilities": [
+        "visualization"
+      ],
+      "inputs": [
+        {
+          "name": "results",
+          "artifact_type": "de_results",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "plot",
+          "artifact_type": "png"
+        }
+      ],
+      "parameters": [],
+      "runtime": {
+        "kind": "synthetic"
+      },
+      "preflight": [],
+      "confidence_tier": "curated_profile",
+      "evidence": [
+        {
+          "kind": "synthetic_fixture",
+          "path": "tests/fixtures"
+        }
+      ]
+    },
+    {
+      "module_id": "embedding_scatter_plot",
+      "title": "Synthetic embedding scatter plot",
+      "capabilities": [
+        "visualization"
+      ],
+      "inputs": [
+        {
+          "name": "embedding",
+          "artifact_type": "anndata",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "plot",
+          "artifact_type": "png"
+        }
+      ],
+      "parameters": [],
+      "runtime": {
+        "kind": "synthetic"
+      },
+      "preflight": [],
+      "confidence_tier": "curated_profile",
+      "evidence": [
+        {
+          "kind": "synthetic_fixture",
+          "path": "tests/fixtures"
+        }
+      ]
+    },
+    {
+      "module_id": "mex_to_anndata",
+      "title": "Synthetic matrix to AnnData",
+      "capabilities": [
+        "single_cell"
+      ],
+      "inputs": [
+        {
+          "name": "mex",
+          "artifact_type": "mex_directory",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "adata",
+          "artifact_type": "anndata"
+        }
+      ],
+      "parameters": [],
+      "runtime": {
+        "kind": "synthetic"
+      },
+      "preflight": [],
+      "confidence_tier": "curated_profile",
+      "evidence": [
+        {
+          "kind": "synthetic_fixture",
+          "path": "tests/fixtures"
+        }
+      ]
+    },
+    {
+      "module_id": "anndata_qc_filter",
+      "title": "Synthetic AnnData QC filter",
+      "capabilities": [
+        "single_cell",
+        "qc"
+      ],
+      "inputs": [
+        {
+          "name": "adata",
+          "artifact_type": "anndata",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered",
+          "artifact_type": "anndata"
+        }
+      ],
+      "parameters": [],
+      "runtime": {
+        "kind": "synthetic"
+      },
+      "preflight": [],
+      "confidence_tier": "curated_profile",
+      "evidence": [
+        {
+          "kind": "synthetic_fixture",
+          "path": "tests/fixtures"
+        }
+      ]
+    },
+    {
+      "module_id": "anndata_cluster",
+      "title": "Synthetic AnnData clustering",
+      "capabilities": [
+        "single_cell",
+        "clustering"
+      ],
+      "inputs": [
+        {
+          "name": "adata",
+          "artifact_type": "anndata",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "clusters",
+          "artifact_type": "cluster_table"
+        }
+      ],
+      "parameters": [],
+      "runtime": {
+        "kind": "synthetic"
+      },
+      "preflight": [],
+      "confidence_tier": "curated_profile",
+      "evidence": [
+        {
+          "kind": "synthetic_fixture",
+          "path": "tests/fixtures"
+        }
+      ]
+    },
+    {
+      "module_id": "cluster_marker_table",
+      "title": "Synthetic cluster marker table",
+      "capabilities": [
+        "single_cell",
+        "markers"
+      ],
+      "inputs": [
+        {
+          "name": "clusters",
+          "artifact_type": "cluster_table",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "markers",
+          "artifact_type": "marker_table"
+        }
+      ],
+      "parameters": [],
+      "runtime": {
+        "kind": "synthetic"
+      },
+      "preflight": [],
+      "confidence_tier": "curated_profile",
+      "evidence": [
+        {
+          "kind": "synthetic_fixture",
+          "path": "tests/fixtures"
+        }
+      ]
+    },
+    {
+      "module_id": "qc_summary_report",
+      "title": "Synthetic QC summary report",
+      "capabilities": [
+        "qc",
+        "report"
+      ],
+      "inputs": [
+        {
+          "name": "adata",
+          "artifact_type": "anndata",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "report",
+          "artifact_type": "html_report"
+        }
+      ],
+      "parameters": [],
+      "runtime": {
+        "kind": "synthetic"
+      },
+      "preflight": [],
+      "confidence_tier": "curated_profile",
+      "evidence": [
+        {
+          "kind": "synthetic_fixture",
+          "path": "tests/fixtures"
+        }
+      ]
+    }
+  ]
+}

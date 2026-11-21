@@ -1260,30 +1260,42 @@ class RunRepository:
         event: str,
         event_payload: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
-        state = self.get_run(run_id)
-        if state is None:
+        run_id = str(run_id or "").strip()
+        if not run_id:
             return None
-        now = _utc_now()
-        for key, value in updates.items():
-            state[key] = value
-        if "params" in updates and "params_hash" not in updates:
-            state["params_hash"] = f"sha256:{_sha256_json(state.get('params') or {})}"
-        state["updated_at"] = now
-        events = state.get("events") if isinstance(state.get("events"), list) else []
-        events.append(
-            {
-                "event": str(event or "run_updated"),
-                "status": state.get("status"),
-                "current_step": state.get("current_step"),
-                "created_at": now,
-                **(event_payload or {}),
-            }
-        )
-        state["events"] = events
-        self.write_run(state)
+        with self._connect() as conn:
+            # Hold the write lock across read, merge and write so concurrent
+            # updates to one run cannot overwrite each other.
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT state_json FROM workbench_runs WHERE run_id=?", (run_id,)).fetchone()
+            if row is None:
+                return None
+            state = json.loads(row["state_json"])
+            now = _utc_now()
+            for key, value in updates.items():
+                state[key] = value
+            if "params" in updates and "params_hash" not in updates:
+                state["params_hash"] = f"sha256:{_sha256_json(state.get('params') or {})}"
+            state["updated_at"] = now
+            events = state.get("events") if isinstance(state.get("events"), list) else []
+            events.append(
+                {
+                    "event": str(event or "run_updated"),
+                    "status": state.get("status"),
+                    "current_step": state.get("current_step"),
+                    "created_at": now,
+                    **(event_payload or {}),
+                }
+            )
+            state["events"] = events
+            self._write_run_row(conn, state)
         return state
 
     def write_run(self, state: dict[str, Any]) -> None:
+        with self._connect() as conn:
+            self._write_run_row(conn, state)
+
+    def _write_run_row(self, conn: sqlite3.Connection, state: dict[str, Any]) -> None:
         run_id = str(state.get("run_id") or "").strip()
         graph_id = str(state.get("graph_id") or "").strip()
         if not run_id or not graph_id:
@@ -1297,44 +1309,43 @@ class RunRepository:
         now = _utc_now()
         created_at = str(state.get("created_at") or now)
         updated_at = str(state.get("updated_at") or now)
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO workbench_runs(
-                  run_id, graph_id, params_hash, status, current_step,
-                  execution_location, bundle_id, bundle_path, preflight_id,
-                  execution_id, state_json, created_at, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(run_id) DO UPDATE SET
-                  graph_id=excluded.graph_id,
-                  params_hash=excluded.params_hash,
-                  status=excluded.status,
-                  current_step=excluded.current_step,
-                  execution_location=excluded.execution_location,
-                  bundle_id=excluded.bundle_id,
-                  bundle_path=excluded.bundle_path,
-                  preflight_id=excluded.preflight_id,
-                  execution_id=excluded.execution_id,
-                  state_json=excluded.state_json,
-                  updated_at=excluded.updated_at
-                """,
-                (
-                    run_id,
-                    graph_id,
-                    params_hash,
-                    str(state.get("status") or ""),
-                    str(state.get("current_step") or ""),
-                    location_id,
-                    bundle.get("bundle_id"),
-                    bundle.get("bundle_path"),
-                    preflight.get("preflight_id"),
-                    execution.get("execution_id"),
-                    json.dumps(state),
-                    created_at,
-                    updated_at,
-                ),
+        conn.execute(
+            """
+            INSERT INTO workbench_runs(
+              run_id, graph_id, params_hash, status, current_step,
+              execution_location, bundle_id, bundle_path, preflight_id,
+              execution_id, state_json, created_at, updated_at
             )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+              graph_id=excluded.graph_id,
+              params_hash=excluded.params_hash,
+              status=excluded.status,
+              current_step=excluded.current_step,
+              execution_location=excluded.execution_location,
+              bundle_id=excluded.bundle_id,
+              bundle_path=excluded.bundle_path,
+              preflight_id=excluded.preflight_id,
+              execution_id=excluded.execution_id,
+              state_json=excluded.state_json,
+              updated_at=excluded.updated_at
+            """,
+            (
+                run_id,
+                graph_id,
+                params_hash,
+                str(state.get("status") or ""),
+                str(state.get("current_step") or ""),
+                location_id,
+                bundle.get("bundle_id"),
+                bundle.get("bundle_path"),
+                preflight.get("preflight_id"),
+                execution.get("execution_id"),
+                json.dumps(state),
+                created_at,
+                updated_at,
+            ),
+        )
 
 
 class PreflightRepository:

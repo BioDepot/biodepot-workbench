@@ -2343,11 +2343,22 @@ WORKBENCH_HTML = r"""<!doctype html>
         body: JSON.stringify(payload)
       } : {headers: {"X-Morphic-Session": state.clientSessionId}};
       return fetch(appPath(path), options).then(async (response) => {
-        const payload = await response.json();
+        const text = await response.text();
+        let payload = null;
+        try {
+          payload = JSON.parse(text);
+        } catch (parseError) {
+          payload = null;
+        }
         if (!response.ok) {
-          const error = new Error(payload.detail || payload.error || `HTTP ${response.status}`);
-          error.payload = payload;
+          const snippet = String(text || "").trim().slice(0, 200);
+          const detail = payload && typeof payload === "object" ? (payload.detail || payload.error) : "";
+          const error = new Error(detail || (snippet ? `HTTP ${response.status}: ${snippet}` : `HTTP ${response.status}`));
+          error.payload = payload !== null ? payload : {error: snippet};
           throw error;
+        }
+        if (payload === null) {
+          throw new Error(`HTTP ${response.status}: response was not JSON`);
         }
         return payload;
 	      });

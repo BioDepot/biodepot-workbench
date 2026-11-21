@@ -40,9 +40,16 @@ def _expand(value: Any) -> Any:
     return value
 
 
-def _models_path() -> Path:
-    local = REPO_ROOT / "config" / "models.yaml"
-    return local if local.exists() else REPO_ROOT / "config" / "models.example.yaml"
+class ModelsConfigMissing(RuntimeError):
+    """Raised when neither config/models.yaml nor config/models.example.yaml exists."""
+
+
+def _models_path() -> Path | None:
+    for name in ("models.yaml", "models.example.yaml"):
+        candidate = REPO_ROOT / "config" / name
+        if candidate.exists():
+            return candidate
+    return None
 
 
 @dataclass
@@ -98,7 +105,10 @@ def _provider_from_profile(name: str, profile: dict[str, Any]) -> ProviderConfig
 
 
 def load_config(profile_override: str | None = None) -> AppConfig:
-    raw = _expand(yaml.safe_load(_models_path().read_text()) or {})
+    path = _models_path()
+    if path is None:
+        raise ModelsConfigMissing("no model config file (config/models.yaml) found")
+    raw = _expand(yaml.safe_load(path.read_text()) or {})
     profiles: dict[str, Any] = raw.get("profiles") or {}
     if not profiles:
         raise RuntimeError("no model profiles defined in config/models*.yaml")
