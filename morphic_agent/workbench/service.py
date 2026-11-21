@@ -844,13 +844,14 @@ class WorkbenchService:
         execution_location: Any,
         bundle_path: Any = None,
         run_id: str | None = None,
+        request_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         location = resolve_execution_location(execution_location)
         run, run_blocker = self._prepare_run_for_step(
             graph_id,
             params or {},
             execution_location=location.as_dict(),
-            request_context=None,
+            request_context=request_context,
             run_id=run_id,
             status="preflight_running",
             current_step="preflight",

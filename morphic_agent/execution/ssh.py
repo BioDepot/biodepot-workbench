@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import io
+import posixpath
 import json
 import os
 import shutil
@@ -32,6 +33,15 @@ class RemoteSshTarget:
         return f"{self.user}@{self.host}" if self.user else self.host
 
 
+def validate_ssh_name(value: str, label: str) -> str:
+    """Reject host or user values that ssh could parse as options or that hide extra arguments."""
+    if value.startswith("-"):
+        raise ValueError(f"{label} must not start with '-'")
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError(f"{label} must not contain whitespace or control characters")
+    return value
+
+
 def remote_ssh_target(location: Any) -> RemoteSshTarget:
     metadata = dict(getattr(location, "metadata", None) or {})
     host = str(metadata.get("remote_host") or "").strip()
@@ -40,6 +50,8 @@ def remote_ssh_target(location: Any) -> RemoteSshTarget:
         raise ValueError("remote_host is required for remote SSH execution")
     if not workdir:
         raise ValueError("remote_workdir is required for remote SSH execution")
+    validate_ssh_name(host, "remote_host")
+    validate_ssh_name(str(metadata.get("remote_user") or "").strip(), "remote_user")
     runtime = str(metadata.get("remote_container_runtime") or metadata.get("preferred_container_runtime") or "docker").strip().lower()
     if runtime not in {"docker", "podman", "apptainer", "shell"}:
         raise ValueError("remote_container_runtime must be docker, podman, apptainer, or shell")
@@ -132,8 +144,11 @@ def run_remote_ssh_bundle(
         proc = _execute_remote_bundle(target, timeout=timeout)
         copy_back = _download_bundle(target, bundle, timeout=timeout)
         stderr = "\n".join(part for part in [proc.stderr, copy_back.get("stderr", "")] if part)
+        returncode = proc.returncode
+        if copy_back.get("status") != "copied_back" and returncode == 0:
+            returncode = 1
         return {
-            "returncode": proc.returncode,
+            "returncode": returncode,
             "stdout": proc.stdout or "",
             "stderr": stderr,
             "remote": _target_payload(target),
@@ -327,7 +342,10 @@ def _download_bundle(target: RemoteSshTarget, bundle: Path, *, timeout: int) -> 
     proc = subprocess.run([*_ssh_args(target), remote_command], capture_output=True, timeout=timeout)
     if proc.returncode != 0:
         return {"status": "failed", "stderr": _tail(proc.stderr.decode(errors="replace"))}
-    _extract_tar(proc.stdout, bundle)
+    try:
+        _extract_tar(proc.stdout, bundle)
+    except (RuntimeError, OSError, tarfile.TarError, EOFError) as exc:
+        return {"status": "failed", "stderr": _tail(f"remote copy-back extraction failed: {exc}")}
     return {"status": "copied_back", "stderr": _tail(proc.stderr.decode(errors="replace"))}
 
 
@@ -550,21 +568,41 @@ def _tar_directory(directory: Path) -> bytes:
 
 def _extract_tar(payload: bytes, directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
+    root = directory.resolve()
     with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
-        for member in archive.getmembers():
+        members = archive.getmembers()
+        links: set[str] = set()
+        for member in members:
+            name = posixpath.normpath(member.name)
+            if member.name.startswith("/") or ".." in member.name.split("/"):
+                raise RuntimeError("remote copy-back archive contains unsafe paths")
+            if any(name == link or name.startswith(link + "/") for link in links):
+                raise RuntimeError("remote copy-back archive writes through a symlink")
+            if member.issym():
+                # In-tree relative links (for example Nextflow publishDir) are fine.
+                linkname = member.linkname
+                joined = posixpath.normpath(posixpath.join(posixpath.dirname(name), linkname))
+                if not linkname or linkname.startswith("/") or joined == ".." or joined.startswith("../"):
+                    raise RuntimeError("remote copy-back archive contains unsafe symlinks")
+                links.add(name)
+                continue
+            if not (member.isreg() or member.isdir()):
+                raise RuntimeError("remote copy-back archive contains links or special files")
             target = (directory / member.name).resolve()
             try:
-                target.relative_to(directory.resolve())
+                target.relative_to(root)
             except ValueError as exc:
                 raise RuntimeError("remote copy-back archive contains unsafe paths") from exc
-        archive.extractall(directory)
+        archive.extractall(directory, members=members)
 
 
 def _ssh_args(target: RemoteSshTarget) -> list[str]:
     args = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
     if target.port:
         args.extend(["-p", str(target.port)])
-    args.append(target.hostspec)
+    validate_ssh_name(target.host, "remote_host")
+    validate_ssh_name(target.user or "", "remote_user")
+    args.extend(["--", target.hostspec])
     return args
 
 

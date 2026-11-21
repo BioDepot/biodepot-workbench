@@ -18,7 +18,7 @@ def initialize_sqlite_database(db_path_or_url: str | Path | None = None) -> Data
             f"Workbench compatibility store currently requires SQLite; got database backend `{config.backend}`."
         )
     config.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(config.sqlite_path) as conn:
+    with sqlite3.connect(config.sqlite_path, timeout=30) as conn:
         apply_migrations(conn)
     return config
 
@@ -45,8 +45,10 @@ def apply_migrations(conn: sqlite3.Connection) -> dict[str, Any]:
         if revision in applied:
             continue
         module.upgrade(conn)
+        # Migrations are idempotent, so a concurrent first start may record the
+        # same revision; ignore the duplicate instead of failing.
         conn.execute(
-            "INSERT INTO schema_migrations(revision, description) VALUES (?, ?)",
+            "INSERT OR IGNORE INTO schema_migrations(revision, description) VALUES (?, ?)",
             (revision, description),
         )
         applied_now.append(revision)

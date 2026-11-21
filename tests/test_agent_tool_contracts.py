@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+import pytest
 from starlette.testclient import TestClient
 
 from morphic_agent.api.app import create_app
+from morphic_agent.content.paths import star_suite_root
 from morphic_agent.bundle.star_workflow import (
     assess_star_render_readiness,
     build_star_argv_preview,
@@ -716,6 +718,11 @@ def test_agent_api_trimodal_qc_render_materializes_reviewable_script(tmp_path):
     assert any(binding["binding_id"] == "mudata" and binding["path"] == "data/demo_trimodal_small.h5mu" for binding in path_bindings["bindings"])
 
 
+@pytest.mark.skipif(
+    not (star_suite_root() / "mcp_server" / "tools" / "workflows.py").is_file()
+    or not (star_suite_root() / "core" / "legacy" / "source" / "STAR").exists(),
+    reason="needs a STAR Suite checkout (set STAR_SUITE_ROOT) that provides the workflow renderer and STAR binary",
+)
 def test_agent_api_star_render_uses_suite_renderer_for_real_script():
     client = _client()
     params = {

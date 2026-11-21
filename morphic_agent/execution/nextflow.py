@@ -8,6 +8,7 @@ import mimetypes
 import os
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import textwrap
@@ -495,14 +496,7 @@ def run_nextflow_bundle(
     if env:
         run_env.update({str(key): str(value) for key, value in env.items()})
     try:
-        proc = subprocess.run(
-            command,
-            cwd=str(bundle_path),
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            env=run_env,
-        )
+        proc = run_in_new_session(command, cwd=str(bundle_path), timeout=timeout_seconds, env=run_env)
         stdout = proc.stdout
         stderr = proc.stderr
         returncode = proc.returncode
@@ -902,6 +896,58 @@ def _prefixed_sha256(payload: Any) -> str:
 def _tail_text(value: str, *, limit: int = 4000) -> str:
     text = str(value or "")
     return text[-limit:]
+
+
+def terminate_process_group(proc: "subprocess.Popen[Any]", *, grace_seconds: float = 5.0) -> None:
+    """Stop a child started with start_new_session=True and all its descendants."""
+
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        proc.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        pass
+    # The launcher can exit before a descendant that ignored TERM, so kill the group regardless.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    finally:
+        proc.wait()
+
+
+def run_in_new_session(
+    command: list[str],
+    *,
+    cwd: str,
+    timeout: float | None,
+    env: dict[str, str] | None = None,
+) -> "subprocess.CompletedProcess[str]":
+    """Like subprocess.run(capture_output=True, text=True) but a timeout stops the whole process group."""
+
+    proc = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except BaseException as exc:
+        terminate_process_group(proc)
+        try:
+            stdout, stderr = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            stdout, stderr = "", ""
+        if isinstance(exc, subprocess.TimeoutExpired):
+            raise subprocess.TimeoutExpired(command, timeout, output=stdout, stderr=stderr) from None
+        raise
+    return subprocess.CompletedProcess(command, proc.returncode, stdout, stderr)
 
 
 def _decode_output(value: Any) -> str:

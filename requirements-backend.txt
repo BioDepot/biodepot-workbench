@@ -3,7 +3,7 @@
 # engines (STAR/Chromap/libMACS3/CUDA) are required for the report/QC recipes.
 #
 # Mirrors the pure-Python subset of multiomics-suite/requirements.txt.
-fastmcp
+fastmcp>=2.14,<4
 uvicorn
 starlette
 pydantic

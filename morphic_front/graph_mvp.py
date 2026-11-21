@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import signal
 import stat
 import subprocess
 import textwrap
@@ -810,8 +812,33 @@ def materialize_star_mvp_bundle(
     return bundle
 
 
+def _terminate_process_group(proc: "subprocess.Popen[Any]", *, grace_seconds: float = 5.0) -> None:
+    """Stop a child started with start_new_session=True and all its descendants."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        proc.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    finally:
+        proc.wait()
+
+
 def run_materialized_bundle(bundle: str | Path, *, timeout: int = 120) -> dict[str, Any]:
     bundle = Path(bundle)
-    subprocess.run(["bash", str(bundle / "run.sh")], cwd=str(bundle), check=True, timeout=timeout)
+    proc = subprocess.Popen(["bash", str(bundle / "run.sh")], cwd=str(bundle), start_new_session=True)
+    try:
+        returncode = proc.wait(timeout=timeout)
+    except BaseException:
+        _terminate_process_group(proc)
+        raise
+    if returncode:
+        raise subprocess.CalledProcessError(returncode, proc.args)
     result_path = bundle / "execution_result.json"
     return json.loads(result_path.read_text(encoding="utf-8"))
